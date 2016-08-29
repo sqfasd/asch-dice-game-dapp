@@ -68,5 +68,30 @@
 		"path": "/delegates",
 		"method": "put",
 		"handler": "blockchain.delegates.addDelegates"
+	},
+	{
+		"path": "/rolls",
+		"method": "put",
+		"handler": "contracts.roll.add"
+	},
+	{
+		"path": "/rolls",
+		"method": "get",
+		"handler": "contracts.roll.list"
+	},
+	{
+		"path": "/rolls/get",
+		"method": "get",
+		"handler": "contracts.roll.get"
+	},
+	{
+		"path": "/bets",
+		"method": "put",
+		"handler": "contracts.bet.add"
+	},
+	{
+		"path": "/reveals",
+		"method": "put",
+		"handler": "contracts.reveal.add"
 	}
 ]

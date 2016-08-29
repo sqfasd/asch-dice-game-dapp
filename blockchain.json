@@ -89,6 +89,30 @@
 				"on": {
 					"t.id": "t_d.transactionId"
 				}
+			},
+			{
+				"type": "left outer",
+				"table": "asset_roll",
+				"alias": "t_ro",
+				"on": {
+					"t.id": "t_ro.transactionId"
+				}
+			},
+			{
+				"type": "left outer",
+				"table": "asset_bet",
+				"alias": "t_be",
+				"on": {
+					"t.id": "t_be.transactionId"
+				}
+			},
+			{
+				"type": "left outer",
+				"table": "asset_reveal",
+				"alias": "t_re",
+				"on": {
+					"t.id": "t_re.transactionId"
+				}
 			}
 		]
 	},
@@ -205,6 +229,113 @@
 			{
 				"name": "delegates",
 				"type": "Text",
+				"not_null": true
+			},
+			{
+				"name": "transactionId",
+				"type": "String",
+				"length": 21,
+				"not_null": true
+			}
+		],
+		"foreignKeys": [
+			{
+				"field": "transactionId",
+				"table": "transactions",
+				"table_field": "id",
+				"on_delete": "cascade"
+			}
+		]
+	},
+	{
+		"table": "asset_roll",
+		"alias": "t_ro",
+		"type": "table",
+		"tableFields": [
+			{
+				"name": "pointsHash",
+				"type": "Text",
+				"length": 64,
+				"not_null": true
+			},
+			{
+				"name": "maxPlayer",
+				"type": "BigInt",
+				"not_null": true
+			},
+			{
+				"name": "transactionId",
+				"type": "String",
+				"length": 21,
+				"not_null": true
+			}
+		],
+		"foreignKeys": [
+			{
+				"field": "transactionId",
+				"table": "transactions",
+				"table_field": "id",
+				"on_delete": "cascade"
+			}
+		]
+	},
+	{
+		"table": "asset_bet",
+		"alias": "t_be",
+		"type": "table",
+		"tableFields": [
+			{
+				"name": "rule",
+				"type": "BigInt",
+				"not_null": true
+			},
+			{
+				"name": "point",
+				"type": "BigInt",
+				"not_null": true
+			},
+			{
+				"name": "rollId",
+				"type": "String",
+				"length": 21,
+				"not_null": true
+			},
+			{
+				"name": "transactionId",
+				"type": "String",
+				"length": 21,
+				"not_null": true
+			}
+		],
+		"foreignKeys": [
+			{
+				"field": "transactionId",
+				"table": "transactions",
+				"table_field": "id",
+				"on_delete": "cascade"
+			}
+		]
+	},
+	{
+		"table": "asset_reveal",
+		"alias": "t_re",
+		"type": "table",
+		"tableFields": [
+			{
+				"name": "nonce",
+				"type": "BigInt",
+				"not_null": true
+			},
+			{
+				"name": "points",
+				"type": "String",
+				"length": 5,
+				"not_null": true
+			},
+			{
+				"name": "rollId",
+				"type": "String",
+				"length": 21,
 				"not_null": true
 			},
 			{
