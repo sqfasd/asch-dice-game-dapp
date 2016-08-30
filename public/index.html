@@ -4,21 +4,23 @@
 <head>
     <meta charset="UTF-8">
     <script src="http://lib.sinaapp.com/js/jquery/1.9.1/jquery-1.9.1.min.js"></script>
-    <title>Asch Dapp Hello World</title>
+    <title>Asch Dice Game Dapp</title>
 </head>
 
 <script type="text/javascript">
     $(document).ready(function() {
         var DAPP_ID = window.location.pathname.split('/')[2];
         var BASE_URL = '/api/dapps/' + DAPP_ID + '/api';
+        var COUNT_PER_PAGE = 20;
         var State = {
-            isLogin: false
+            isLogin: false,
+            timer: null
         };
         var UserInfo = {
             secret: '',
         };
 
-        function refreshAccount(account) {
+        function updateAccountView(account) {
             var $table = $('#balanceTable');
             $table.find('tr:not(:first)').remove();
             var $options = $('#assetOptions');
@@ -37,7 +39,9 @@
             $('#secretInput').hide();
 
             $('#mainPanel').show();
-            refreshAccount(account);
+            updateAccountView(account);
+            pullLatestGames();
+            createBetTable();
         }
 
         function login(secret) {
@@ -55,7 +59,27 @@
                         return;
                     }
                     UserInfo.secret = secret;
+                    UserInfo.publicKey = ret.account.publicKey;
                     onLogin(ret.account);
+                }
+            });
+        }
+
+        function getAccount(publicKey) {
+            $.ajax({
+                type: 'POST',
+                url: BASE_URL + '/openAccount2',
+                data: {
+                    publicKey: publicKey
+                },
+                dataType: 'json',
+                success: function(ret) {
+                    console.log(ret);
+                    if (!ret.success) {
+                        alert(ret.error);
+                        return;
+                    }
+                    updateAccountView(ret.account);
                 }
             });
         }
@@ -65,6 +89,10 @@
             $('#secretInput').show();
             $('#mainPanel').hide();
             State.isLogin = false;
+            if (State.timer) {
+                clearInterval(State.timer);
+                State.timer = null;
+            }
         }
 
         function withdrawal(secret, amount) {
@@ -83,7 +111,6 @@
                         return;
                     }
                     $('#withdrawalAmountinput').val('');
-                    setTimeout(login.bind(null, secret), 1000 * 10);
                 }
             });
         }
@@ -107,10 +134,240 @@
                     }
                     $('#transferAmount').val('');
                     $('#transferAddress').val('');
-                    setTimeout(login.bind(null, secret), 1000 * 10);
                 }
             });
         }
+
+        function calculateResult(points, rule, betPoint) {
+	        var totalPoint = points[0] + points[1] + points[2];
+	        var result = {
+		        win: false,
+		        odds: 1
+	        };
+	        switch (rule) {
+		        case 1:
+			        var big = totalPoint > 10 ? 1 : 0;
+			        if (big == betPoint) {
+				        result.win = true;
+			        }
+			        break;
+		        case 2:
+			        var betCount = 0;
+			        for (var i = 0; i < points.length; ++i) {
+				        if (points[i] == betPoint) {
+					        betCount++;
+				        }
+			        }
+			        if (betCount > 0) {
+				        result.win = true;
+				        result.odds = betCount;
+			        }
+			        break;
+		        case 3:
+			        if (totalPoint == betPoint) {
+				        result.win = true;
+				        result.odds = 2;
+			        } else if (Math.abs(totalPoint - betPoint) == 1) {
+				        result.win = true;
+				        result.odds = 1;
+			        }
+			        break;
+		        default:
+			        break;
+	        }
+	        return result;
+        }
+
+        function newTd(content) {
+            return '<td>' + content + '</td>';
+        }
+
+        function newBetsTd(bets, reveal) {
+            var td = '<td align="left"><div><ul>';
+            for (var i = 0; i < bets.length; ++i) {
+                var bet = bets[i];
+                var output = [
+                    bet.senderId,
+                    '玩法' + bet.rule,
+                    bet.rule == 1 ? '押' + (bet.point ? '大' : '小') : '押' + bet.point + '点',
+                    bet.amount / 100000000
+                ];
+                if (reveal) {
+                    var points = reveal.points.split(',').map(function (i) { return Number(i)});
+                    var result = calculateResult(points, bet.rule, bet.point);
+                    output.push(result.win ? '赢' + result.odds + '倍' : '输');
+                }
+                td += '<li>';
+                td += output.join(' ');
+                td += '</li>';
+            }
+            td += '</ul></div></td>';
+            return td;
+        }
+
+        function updateGameView(rolls) {
+            var $table = $('#gameTable');
+            $table.find('tr:not(:first)').remove();
+            
+            for (var i in rolls) {
+                var roll = rolls[i].roll;
+                var bets = rolls[i].bets;
+                var reveal = rolls[i].reveal;
+                var tr = '<tr>';
+                tr += newTd(roll.id);
+                tr += newTd(roll.senderId);
+                tr += newTd(roll.amount / 100000000);
+                tr += newTd(roll.maxPlayer);
+                tr += newTd(3);
+                tr += newTd(Math.floor(roll.amount / 100000000 / roll.maxPlayer / 3));
+                tr += ('<td>' + (reveal ? '已开(' + reveal.points + ')' : '未开') + '</td>');
+                tr += newBetsTd(bets, reveal);
+                tr += '</tr>';
+                $table.append(tr);
+            }
+        }
+
+        function bet(secret, rollId, rule, point, amount) {
+            $.ajax({
+                type: 'PUT',
+                url: BASE_URL + '/bets',
+                data: {
+                    secret: secret,
+                    amount: amount,
+                    rule: rule,
+                    point: point,
+                    rollId: rollId
+                },
+                dataType: 'json',
+                success: function(ret) {
+                    console.log(ret);
+                    if (!ret.success) {
+                        alert(ret.error);
+                        return;
+                    }
+                    alert("下注成功!");
+                }
+            });
+        }
+
+        function newSelect(min, max) {
+            var select = '<select class="bet-point">';
+            for (var i = min; i <= max; ++i) {
+                select += ('<option value="' + i + '">' + i + '</option>');
+            }
+            select += '</select>'
+            return select;
+        }
+
+        function newRuleTd(rule) {
+            var td = '<td>';
+            var optionsForRule = {
+                1: [0, 1],
+                2: [1, 6],
+                3: [3, 18]
+            };
+            var options = optionsForRule[rule];
+            td += newSelect(options[0], options[1]);
+            td += '<br/>';
+            td += '<input type="text" class="bet-id" placeholder="输入ID"><br/>';
+            td += '<input type="text" class="bet-amount" placeholder="输入金额"><br/>';
+            td += '<input type="hidden" class="bet-rule" value="' + rule + '"><br/>';
+            td += '<button class="bet-btn">下注</button>';
+            td += '</td>'
+            return td;
+        }
+
+        function createBetTable() {
+            var $panel = $('#betTable');
+            $panel.append(newRuleTd(1));
+            $panel.append(newRuleTd(2));
+            $panel.append(newRuleTd(3));
+            $('.bet-btn').click(function () {
+                var parent = $(this).parent();
+                var betRollId = String(parent.find('.bet-id').val());
+                var betRule = Number(parent.find('.bet-rule').val());
+                var betPoint = Number(parent.find('.bet-point').val());
+                var betAmount = Number(parent.find('.bet-amount').val());
+                var realAmount = parseFloat((betAmount * 100000000).toFixed(0));
+                bet(UserInfo.secret, betRollId, betRule, betPoint, realAmount);
+            });
+        }
+
+        function pullLatestGames() {
+            $.ajax({
+                type: 'GET',
+                url: BASE_URL + '/rolls?detail=true',
+                dataType: 'json',
+                success: function(ret) {
+                    console.log(ret);
+                    if (!ret.success) {
+                        alert(ret.error);
+                        return;
+                    }
+                    updateGameView(ret.rolls);
+                }
+            });
+        }
+
+        function roll(secret, amount, maxPlayer) {
+            $.ajax({
+                type: 'PUT',
+                url: BASE_URL + '/rolls',
+                data: {
+                    secret: secret,
+                    amount: amount,
+                    maxPlayer: maxPlayer
+                },
+                dataType: 'json',
+                success: function(ret) {
+                    console.log(ret);
+                    if (!ret.success) {
+                        alert(ret.error);
+                        return;
+                    }
+                    alert("操作成功!");
+                    $('#rollAmount').val('');
+                    $('#rollMaxPlayer').val('');
+                    var tips = '请妥善保管以下信息，开骰时需要使用，否则您的押金将无法找回，勿泄露!\n' 
+                        + 'ID: ' + ret.transaction.transactionId + '\n'
+                        + '随机数: ' + ret.nonce + '\n'
+                        + '点数: ' + ret.points + '\n\n';
+                    $('#rollConsole').append(tips);
+                }
+            });
+        }
+
+        function reveal(secret, rollId, nonce, points) {
+            $.ajax({
+                type: 'PUT',
+                url: BASE_URL + '/reveals',
+                data: {
+                    secret: secret,
+                    rollId: rollId,
+                    nonce: nonce,
+                    points: points
+                },
+                dataType: 'json',
+                success: function(ret) {
+                    console.log(ret);
+                    if (!ret.success) {
+                        alert(ret.error);
+                        return;
+                    }
+                    alert("操作成功!");
+                    $('#revealId').val('');
+                    $('#revealNonce').val('');
+                    $('#revealPoints').val('');
+                }
+            });
+        }
+
+        State.timer = setInterval(function () {
+            if (UserInfo.publicKey) {
+                getAccount(UserInfo.publicKey);
+                pullLatestGames();
+            }
+        }, 10 * 1000);
 
         $('#loginBtn').click(function () {
             if (State.isLogin) {
@@ -139,11 +396,31 @@
             var realAmount = parseFloat((amount * 100000000).toFixed(0));
             transfer(UserInfo.secret, assetName, realAmount, address);
         });
+
+        $('#rollBtn').click(function () {
+            var amount = Number($('#rollAmount').val());
+            var maxPlayer = Number($('#rollMaxPlayer').val());
+            if (isNaN(amount) || amount <= 0 || isNaN(maxPlayer) || maxPlayer <= 0) {
+                return alert('您输入的参数不正确!');
+            }
+            var realAmount = parseFloat((amount * 100000000).toFixed(0));
+            roll(UserInfo.secret, realAmount, Math.floor(maxPlayer));
+        });
+
+        $('#revealBtn').click(function () {
+            var rollId = $('#revealId').val();
+            var nonce = $('#revealNonce').val();
+            var points = $('#revealPoints').val();
+            if (!rollId || !nonce || !points) {
+                return alert('您输入的参数不正确!');
+            }
+            reveal(UserInfo.secret, rollId, nonce, points);
+        });
     });
 </script>
 
 <body>
-    <h1>Asch Dapp Hello World</h1>
+    <h1>Asch Dice Game Dapp</h1>
     <div>
         <input type="password" id="secretInput" placeholder="请输入主密码">
         <input type="button" value="登录" id="loginBtn">
@@ -174,6 +451,73 @@
             <input type="text" id="transferAmount" placeholder="请输入转账金额">
             <input type="text" id="transferAddress" placeholder="请输入转账地址">
             <input type="button" id="transferBtn" value="转账">
+        </div>
+
+        <hr/>
+        <h2>局</h2>
+        <div>
+            <table id="gameTable" border="1" style="text-align: center;">
+                <tr>
+                    <th>ID</th>
+                    <th>庄家</th>
+                    <th>押金</th>
+                    <th>最多玩家</th>
+                    <th>最高赔率</th>
+                    <th>下注上限</th>
+                    <th>状态</th>
+                    <th>闲家</th>
+                </tr>
+                <!--<tr>
+                    <td>fdsfds</td>
+                    <td>fdsfds</td>
+                    <td>10000</td>
+                    <td>8</td>
+                    <td>3</td>
+                    <td>321</td>
+                    <td align="left">
+                        <div>
+                            <ul>
+                                <li>321321 玩法1 押小 200 输</li>
+                                <li>321321 玩法2 押6点 200 输</li>
+                                <li>321321 玩法3 押10点 200 赢2倍</li>
+                            </ul>
+                        </div>
+                    </td>
+                    <td>进行中</td>
+                </tr>-->
+            </table>
+        </div>
+
+        <hr/>
+        <h2>押</h2>
+        <table id="betTable" border="1">
+            <tr>
+                <th>玩法一(押大小)</th>
+                <th>玩法二(押点数)</th>
+                <th>玩法三(押总点数)</th>
+            </tr>
+        </table>
+
+        <hr/>
+        <h2>开</h2>
+        <div>
+            <input type="text" placeholder="输入ID" id="revealId">
+            <input type="text" placeholder="输入随机数" id="revealNonce">
+            <input type="text" placeholder="输入点数" id="revealPoints">
+            <button id="revealBtn">开</button>
+            <br/>
+            <br/>
+            <br/>
+        </div>
+
+        <hr/>
+        <h2>摇</h2>
+        <div>
+            <input type="text" placeholder="输入押金" id="rollAmount">
+            <input type="text" placeholder="输入最多玩家" id="rollMaxPlayer">
+            <button id="rollBtn">摇</button>
+            <br/><br/>
+            <textarea rows="20" cols="60" id="rollConsole"></textarea>
         </div>
     </div>
 </body>

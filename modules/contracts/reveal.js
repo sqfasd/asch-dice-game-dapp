@@ -311,4 +311,46 @@ Reveal.prototype.add = function (cb, query) {
 	});
 }
 
+Reveal.prototype.getRevealForRoll = function (id, cb) {
+	if (!self.hasConfirmed(id)) {
+		return cb(null);
+	}
+	modules.api.sql.select({
+			table: "asset_reveal",
+			alias: "tre",
+			condition: {
+				rollId: id,
+			},
+			join: [{
+				type: "left outer",
+				table: "transactions",
+				alias: "t",
+				on: {
+					"t.id": "tre.transactionId"
+				}
+			}],
+			fields: [
+				{ "t.id": "id" },
+				{ "t.senderId": "senderId" },
+				{ "t.amount": "amount" },
+				{ "tre.nonce": "nonce" },
+				{ "tre.points": "points" },
+				{ "tre.rollId": "rollId" }
+			]
+		},
+		{
+			"id": String,
+			"senderId": String,
+			"amount": Number,
+			"nonce": Number,
+			"points": String,
+			"rollId": String
+		}, function (err, rows) {
+			if (err) {
+				return cb(err.toString());
+			}
+			return cb(null, rows && rows.length > 0 ? rows[0] : null);
+		});
+}
+
 module.exports = Reveal;

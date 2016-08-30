@@ -1,4 +1,5 @@
 var crypto = require("crypto");
+var async = require("async");
 var TransactionTypes = require("../helpers/transaction-types.js");
 var constants = require("../helpers/constants.js");
 
@@ -198,45 +199,11 @@ Roll.prototype.getRollAndBets = function (id, cb) {
 		if (err || !roll) {
 			return cb(err || "Roll not found");
 		}
-		modules.api.sql.select({
-			table: "transactions",
-			alias: "t",
-			condition: {
-				type: TransactionTypes.BET,
-			},
-			join: [{
-				type: "left outer",
-				table: "asset_bet",
-				alias: "tbe",
-				on: {
-					"tbe.rollId": id,
-					"t.id": "tbe.transactionId"
-				}
-			}],
-			fields: [
-				{ "t.id": "id" },
-				{ "t.senderId": "senderId" },
-				{ "t.amount": "amount" },
-				{ "tbe.rule": "rule" },
-				{ "tbe.point": "point" },
-				{ "tbe.rollId": "rollId" }
-			]
-		},
-		{
-			"id": String,
-			"senderId": String,
-			"amount": Number,
-			"rule": Number,
-			"point": Number,
-			"rollId": String
-		}, function (err, bets) {
+		modules.contracts.bet.getBetsForRoll(id, function (err, bets) {
 			if (err) {
-				return cb(err.toString());
+				return cb(err);
 			}
-			return cb(null, {
-				roll: roll,
-				bets: bets
-			})
+			return cb(null, {roll: roll, bets: bets});
 		});
 	});
 }
@@ -272,7 +239,7 @@ Roll.prototype.list = function (cb, query) {
 		table: "transactions",
 		alias: "t",
 		condition: condition,
-		limit: query.limit ? Number(query.limit) : 100,
+		limit: query.limit ? Number(query.limit) : 20,
 		offset: query.offset ? Number(query.offset) : 0,
 		sort: {
 			timestamp: -1
@@ -303,10 +270,39 @@ Roll.prototype.list = function (cb, query) {
 			if (err) {
 				return cb(err.toString());
 			}
-			rolls.forEach(function (r) {
-				r.revealed = modules.contracts.reveal.hasConfirmed(r.id);
+			if (query.detail != "true") {
+				return cb(null, {rolls: rolls});
+			}
+			async.map(rolls, function (roll, next) {
+				var obj = {
+					roll: roll
+				}
+				async.series([
+					function (next) {
+						modules.contracts.bet.getBetsForRoll(roll.id, function (err, bets) {
+							if (!err) {
+								obj.bets = bets;
+							}
+							next(err);
+						});
+					},
+					function (next) {
+						modules.contracts.reveal.getRevealForRoll(roll.id, function (err, reveal) {
+							if (!err &&　reveal) {
+								obj.reveal = reveal;
+							}
+							next(err);
+						});
+					}
+				], function (err) {
+					next(err, obj);
+				});
+			}, function (err, details) {
+				if (err) {
+					return cb(err);
+				}
+				cb(null, {rolls: details});
 			});
-			return cb(null, {rolls: rolls});
 		});
 }
 

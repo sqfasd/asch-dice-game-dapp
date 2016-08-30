@@ -82,6 +82,10 @@ Bet.prototype.undo = function (trs, sender, cb, scope) {
 Bet.prototype.applyUnconfirmed = function (trs, sender, cb, scope) {
 	var sum = trs.amount + trs.fee;
 
+	if (modules.contracts.reveal.hasConfirmed(trs.asset.bet.rollId)) {
+		return cb("The game already finished");
+	}
+
 	if (sender.u_balance["XAS"] < sum) {
 		return cb("Account does not have enough XAS");
 	}
@@ -193,6 +197,45 @@ Bet.prototype.add = function (cb, query) {
 
 		cb(null, {transaction: transaction});
 	});
+}
+
+Bet.prototype.getBetsForRoll = function (id, cb) {
+	modules.api.sql.select({
+			table: "asset_bet",
+			alias: "tbe",
+			condition: {
+				rollId: id,
+			},
+			join: [{
+				type: "left outer",
+				table: "transactions",
+				alias: "t",
+				on: {
+					"t.id": "tbe.transactionId"
+				}
+			}],
+			fields: [
+				{ "t.id": "id" },
+				{ "t.senderId": "senderId" },
+				{ "t.amount": "amount" },
+				{ "tbe.rule": "rule" },
+				{ "tbe.point": "point" },
+				{ "tbe.rollId": "rollId" }
+			]
+		},
+		{
+			"id": String,
+			"senderId": String,
+			"amount": Number,
+			"rule": Number,
+			"point": Number,
+			"rollId": String
+		}, function (err, bets) {
+			if (err) {
+				return cb(err.toString());
+			}
+			return cb(null, bets);
+		});
 }
 
 module.exports = Bet;
