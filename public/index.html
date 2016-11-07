@@ -189,7 +189,7 @@
                 var output = [
                     bet.senderId,
                     '玩法' + bet.rule,
-                    bet.rule == 1 ? '押' + (bet.point ? '大' : '小') : '押' + bet.point + '点',
+                    bet.rule == 1 ? '猜' + (bet.point ? '大' : '小') : '猜' + bet.point + '点',
                     bet.amount / 100000000
                 ];
                 if (reveal) {
